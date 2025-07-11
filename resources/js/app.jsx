@@ -17,7 +17,11 @@ createInertiaApp({
     setup({ el, App, props }) {
         const root = createRoot(el);
 
-        root.render(<App {...props} />);
+        console.log("Inertia App Setup - Raw Props:", props);
+
+        const initialFlash = props.flash || {};
+
+        root.render(<App {...props} flash={initialFlash} />);
     },
     progress: {
         color: '#4B5563',

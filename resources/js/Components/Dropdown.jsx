@@ -6,29 +6,43 @@ const DropDownContext = createContext();
 
 const Dropdown = ({ children }) => {
     const [open, setOpen] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
 
     const toggleOpen = () => {
         setOpen((previousState) => !previousState);
+        setIsHovered(false);
     };
 
+    const handleMouseEnter = () => {
+        setIsHovered(true);
+    };
+
+    const handleMouseLeave = () => {
+        setIsHovered(false);
+    };
+
+    const isActive = open || isHovered;
+
     return (
-        <DropDownContext.Provider value={{ open, setOpen, toggleOpen }}>
-            <div className="relative">{children}</div>
+        <DropDownContext.Provider value={{ open: isActive, setOpen, toggleOpen, isHovered, setIsHovered }}>
+            <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                {children}
+            </div>
         </DropDownContext.Provider>
     );
 };
 
 const Trigger = ({ children }) => {
-    const { open, setOpen, toggleOpen } = useContext(DropDownContext);
+    const { toggleOpen } = useContext(DropDownContext);;
 
     return (
         <>
             <div onClick={toggleOpen}>{children}</div>
 
-            {open && (
+            {useContext(DropDownContext).open && (
                 <div
                     className="fixed inset-0 z-40"
-                    onClick={() => setOpen(false)}
+                    onClick={() => useContext(DropDownContext).setOpen(false)}
                 ></div>
             )}
         </>
@@ -41,7 +55,7 @@ const Content = ({
     contentClasses = 'py-1 bg-white',
     children,
 }) => {
-    const { open, setOpen } = useContext(DropDownContext);
+    const { open, setOpen, setIsHovered } = useContext(DropDownContext);
 
     let alignmentClasses = 'origin-top';
 
@@ -61,7 +75,7 @@ const Content = ({
         <>
             <Transition
                 show={open}
-                enter="transition ease-out duration-200"
+                enter="transition ease-out duration-75"
                 enterFrom="opacity-0 scale-95"
                 enterTo="opacity-100 scale-100"
                 leave="transition ease-in duration-75"
@@ -70,7 +84,10 @@ const Content = ({
             >
                 <div
                     className={`absolute z-50 mt-2 rounded-md shadow-lg ${alignmentClasses} ${widthClasses}`}
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                        setOpen(false); 
+                        setIsHovered(false); 
+                    }}
                 >
                     <div
                         className={
@@ -87,9 +104,20 @@ const Content = ({
 };
 
 const DropdownLink = ({ className = '', children, ...props }) => {
+    const { setOpen, setIsHovered } = useContext(DropDownContext);
+
+    const handleClick = (e) => {
+        if (props.onClick) {
+            props.onClick(e);
+        }
+        setOpen(false); 
+        setIsHovered(false); 
+    };
+
     return (
         <Link
             {...props}
+            onClick={handleClick}
             className={
                 'block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 transition duration-150 ease-in-out hover:bg-gray-100 focus:bg-gray-100 focus:outline-none ' +
                 className

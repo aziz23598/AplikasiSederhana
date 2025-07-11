@@ -15,6 +15,21 @@ use Illuminate\Validation\Rule;
 class Test2Controller extends Controller
 {
     public function index(Request $request) {
+
+        try {
+            $request->validate([ 
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'search' => 'nullable|string|max:255',
+                'category' => 'nullable|string',
+                'sort_by' => ['nullable', 'string', Rule::in(['description', 'code', 'rate_euro', 'date_paid', 'category', 'name', 'value_idr'])],
+                'sort_direction' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
+                'view' => ['nullable', 'string', Rule::in(['index','list', 'rekap'])], 
+            ]);
+        } catch (ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors())->withInput();
+        }
+
         $viewParam = $request->input('view'); 
         $viewComponent = 'test2/Index'; 
 
@@ -33,24 +48,30 @@ class Test2Controller extends Controller
                 // Mencari di kolom header (description, code)
                 $q->whereHas('header', function ($sq) use ($search) {
                     $sq->where('description', 'like', '%' . $search . '%')
-                       ->orWhere('code', 'like', '%' . $search . '%');
+                       ->orWhere('code', 'like', '%' . $search . '%')
+                       ->orWhere('rate_euro', 'like', '%' . $search . '%');
                 })
                 // Atau mencari di kolom detail (name)
-                ->orWhere('name', 'like', '%' . $search . '%');
+                ->orWhere('name', 'like', '%' . $search . '%')
+                ->orWhere('value_idr', 'like', '%' . $search . '%');
             });
         }
 
-        if ($request->has('start_date') && $request->input('start_date') != '') {
-            $query->whereHas('header', function ($q) use ($request) {
-                $q->whereDate('date_paid', '>=', $request->input('start_date'));
+        $startDate = $request->input('start_date');
+
+        $endDate = $request->input('end_date');
+
+        if ($startDate) {
+            $query->whereHas('header', function ($q) use ($startDate) {
+                $q->whereDate('date_paid', '>=', $startDate);
             });
         }
 
-        if ($request->has('end_date') && $request->input('end_date') != '') {
-            $query->whereHas('header', function ($q) use ($request) {
-                $q->whereDate('date_paid', '<=', $request->input('end_date'));
-            });
-        }
+        if ($endDate) {
+                $query->whereHas('header', function ($q) use ($endDate) {
+                    $q->whereDate('date_paid', '<=', $endDate);
+                });
+            }
 
         if ($request->has('category') && $request->input('category') != '') {
             $categoryName = $request->input('category');
@@ -86,7 +107,7 @@ class Test2Controller extends Controller
 
         return Inertia::render($viewComponent, [
             'transactions' => $transactions,
-            'filters' => $request->only(['search', 'start_date', 'end_date', 'category', 'sort_by', 'sort_direction']),
+            'filters' => $request->only(['search', 'start_date', 'end_date', 'category', 'sort_by', 'sort_direction', 'view']),
             'categories' => $categories,
         ]);
     }
@@ -102,7 +123,24 @@ class Test2Controller extends Controller
     public function store(Request $request) {
         try {
             // Validasi Server-Side
-            $request->validate([
+            $incomesData = collect($request->input('transactionBlocks', []))
+                            ->where('type', 'income')
+                            ->flatMap(fn($block) => $block['items'] ?? [])
+                            ->toArray();
+
+            $expensesData = collect($request->input('transactionBlocks', []))
+                            ->where('type', 'expense')
+                            ->flatMap(fn($block) => $block['items'] ?? [])
+                            ->toArray();
+
+            $validator = \Validator::make([
+                'description' => $request->description,
+                'code' => $request->code,
+                'rate_euro' => $request->rate_euro,
+                'date_paid' => $request->date_paid,
+                'incomes' => $incomesData, 
+                 'expenses' => $expensesData, 
+             ], [
                 'description' => 'required|string|max:255',
                 'code' => 'required|string|max:255|unique:transaction_headers,code',
                 'rate_euro' => 'required|numeric|min:0',
@@ -110,58 +148,64 @@ class Test2Controller extends Controller
                 'incomes' => 'nullable|array',
                 'incomes.*.name' => 'required_with:incomes|string|max:255',
                 'incomes.*.nominal' => 'required_with:incomes|numeric|min:0',
-                'expenses' => 'nullable|array',
-                'expenses.*.name' => 'required_with:expenses|string|max:255',
+                 'expenses' => 'nullable|array',
+                 'expenses.*.name' => 'required_with:expenses|string|max:255',
                 'expenses.*.nominal' => 'required_with:expenses|numeric|min:0',
             ]);
-
-            DB::transaction(function () use ($request) {
+                
+            $validatedData = $validator->validate(); 
+                
+            DB::transaction(function () use ($validatedData) { 
                 $header = TransactionHeader::create([
-                    'description' => $request->description,
-                    'code' => $request->code,
-                    'rate_euro' => $request->rate_euro,
-                    'date_paid' => $request->date_paid,
-                ]);
-
-                $incomeCategoryObj = MsCategory::where('name', 'Income')->first();
-                $expenseCategoryObj = MsCategory::where('name', 'Expense')->first();
-
-                if (!$incomeCategoryObj || !$expenseCategoryObj) {
-                    Log::error('Kategori "Income" atau "Expense" tidak ditemukan (harusnya sudah di-seed).');
-                    throw new \Exception('Konfigurasi: Kategori Income/Expense tidak ada.');
-                }
-
-                $incomeCategoryId = $incomeCategoryObj->id;
-                $expenseCategoryId = $expenseCategoryObj->id;
-
-                // Save Incomes
-                if ($request->has('incomes') && is_array($request->incomes)) {
-                    foreach ($request->incomes as $index => $income)  {
+                    'description' => $validatedData['description'],
+                    'code' => $validatedData['code'],
+                    'rate_euro' => $validatedData['rate_euro'],
+                    'date_paid' => $validatedData['date_paid'],
+            ]);
+                
+            $incomeCategoryObj = MsCategory::where('name', 'Income')->first();
+            $expenseCategoryObj = MsCategory::where('name', 'Expense')->first();
+                
+            if (!$incomeCategoryObj || !$expenseCategoryObj) {
+                Log::error('Kategori "Income" atau "Expense" tidak ditemukan (harusnya sudah di-seed).');
+                throw new \Exception('Konfigurasi: Kategori Income/Expense tidak ada.');
+            }
+                
+            $incomeCategoryId = $incomeCategoryObj->id;
+            $expenseCategoryId = $expenseCategoryObj->id;
+            
+            // Save Incomes
+            if (isset($validatedData['incomes']) && is_array($validatedData['incomes'])) {
+                foreach ($validatedData['incomes'] as $income)  {
+                    if (!empty($income['name']) || (isset($income['nominal']) && $income['nominal'] !== null && $income['nominal'] !== '')) {
                         $header->details()->create([
                             'transaction_category_id' => $incomeCategoryId,
                             'name' => $income['name'],
-                            'value_idr' => $income['nominal'],
+                            'value_idr' => (float) $income['nominal'],
                         ]);
                     }
                 }
-
-                // Save Expenses
-                if ($request->has('expenses') && is_array($request->expenses)) {
-                    foreach ($request->expenses as $index => $expense) {
+            }
+                
+            // Save Expenses
+            if (isset($validatedData['expenses']) && is_array($validatedData['expenses'])) {
+                foreach ($validatedData['expenses'] as $expense) {
+                    if (!empty($expense['name']) || (isset($expense['nominal']) && $expense['nominal'] !== null && $expense['nominal'] !== '')) {
                         $header->details()->create([
                             'transaction_category_id' => $expenseCategoryId,
                             'name' => $expense['name'],
-                            'value_idr' => $expense['nominal'],
+                            'value_idr' => (float) $expense['nominal'],
                         ]);
                     }
                 }
-            });
-
-            return redirect()->route('test2.index')->with('success', 'Transaksi berhasil ditambahkan!');
-
+            }
+        });
+                
+        return redirect()->route('test2.list', ['view' => 'list'])->with('success', 'Transaksi berhasil ditambahkan!');
+                
         } catch (ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
-        } catch (\Exception $e) {
+        } catch (\Exception $e) {    
             return redirect()->back()->with('error', 'Terjadi kesalahan saat menyimpan transaksi: ' . $e->getMessage())->withInput();
         }
     }
@@ -227,7 +271,7 @@ class Test2Controller extends Controller
 
             });
 
-            return redirect()->route('test2.index')->with('success', 'Transaksi berhasil diperbarui!');
+            return redirect()->route('test2.list', ['view' => 'list'])->with('success', 'Transaksi berhasil diperbarui!');
 
         } catch (ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
@@ -273,7 +317,6 @@ class Test2Controller extends Controller
                 $incomingDetailIds[] = $newDetail->id;
             }
         } else {
-            Log::info('Skipping empty/incomplete detail row from form.');
         }
     }
         $detailsToDelete = array_diff($existingDetailIds, $incomingDetailIds);
@@ -281,9 +324,7 @@ class Test2Controller extends Controller
             $test2->details()->whereIn('id', $detailsToDelete)->delete();
         }
     }
-
-
-
+    
     public function destroy(TransactionHeader $test2) {
         try {
             DB::transaction(function () use ($test2) {
@@ -291,7 +332,7 @@ class Test2Controller extends Controller
                 $test2->delete();
             });
 
-            return redirect()->route('test2.index')->with('success', 'Transaksi berhasil dihapus!');
+            return redirect()->route('test2.list', ['view' => 'list'])->with('success', 'Transaksi berhasil dihapus!');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Terjadi kesalahan saat menghapus transaksi: ' . $e->getMessage());
         }

@@ -2,7 +2,7 @@ import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth.user;
@@ -10,10 +10,21 @@ export default function AuthenticatedLayout({ header, children }) {
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
 
+    const [showingProductMobileDropdown, setShowingProductMobileDropdown] = useState(false);
+
+    useEffect(() => {
+        setShowingProductMobileDropdown(showingNavigationDropdown);
+    }, [showingNavigationDropdown]);
+
+    const handleProductMobileClick = (e) => {
+        e.preventDefault(); 
+        setShowingProductMobileDropdown(prev => !prev);
+    };
+
     return (
         <div className="min-h-screen bg-gray-100">
             <nav className="border-b border-gray-100 bg-white">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8">
                     <div className="flex h-16 justify-between">
                         <div className="flex">
                             <div className="flex shrink-0 items-center">
@@ -93,11 +104,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
                         <div className="-me-2 flex items-center sm:hidden">
                             <button
-                                onClick={() =>
-                                    setShowingNavigationDropdown(
-                                        (previousState) => !previousState,
-                                    )
-                                }
+                                onClick={() => setShowingNavigationDropdown((previousState) => !previousState)}
                                 className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none"
                             >
                                 <svg
@@ -158,12 +165,33 @@ export default function AuthenticatedLayout({ header, children }) {
                     </div>
 
                     <div className="border-t border-gray-200 pb-1 pt-4">
-                        <div className="px-4">
-                            <div className="text-base font-medium text-gray-800 ">
-                                Product
+                        <ResponsiveNavLink
+                            as="button" 
+                            onClick={handleProductMobileClick} 
+                            active={showingProductMobileDropdown} 
+                        >
+                            <div className="flex justify-between items-center w-full">
+                                <span>Product</span>
+                                <svg
+                                    className={`-me-0.5 ms-2 h-4 w-4 transform transition-transform duration-200 ${showingProductMobileDropdown ? 'rotate-180' : ''}`}
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                        clipRule="evenodd"
+                                    />
+                                </svg>
                             </div>
-                        </div>
-                        <div className="mt-3 space-y-1">
+                        </ResponsiveNavLink>
+                        <div
+                            className={
+                                (showingProductMobileDropdown ? 'block' : 'hidden') +
+                                ' space-y-1 mt-2 ps-4' 
+                            }
+                        >
                             <ResponsiveNavLink href={route('profile.edit')}>
                                 Google
                             </ResponsiveNavLink>
@@ -199,7 +227,7 @@ export default function AuthenticatedLayout({ header, children }) {
             </nav>
             {header && (
                 <header className="bg-white shadow">
-                    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="w-full px-4 py-6 sm:px-6 lg:px-8">
                         {header}
                     </div>
                 </header>

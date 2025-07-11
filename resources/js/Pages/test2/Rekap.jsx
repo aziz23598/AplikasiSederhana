@@ -6,7 +6,7 @@ import { faSortUp, faSortDown, faTimesCircle, faSearch } from '@fortawesome/free
 import { debounce } from 'lodash';
 
 export default function TransactionList({ transactions, filters, categories }) {
-    const { flash = {} } = usePage().props;
+    const { flash = {}, errors: pageErrorsFromBackend } = usePage().props;
 
     // Inisialisasi state dari props filters
     const [search, setSearch] = useState(filters.search || '');
@@ -17,9 +17,16 @@ export default function TransactionList({ transactions, filters, categories }) {
     const [sortDirection, setSortDirection] = useState(filters.sort_direction || 'desc');
     const [viewParam, setViewParam] = useState(filters.view || 'rekap');
     const [currentPage, setCurrentPage] = useState(transactions.current_page || 1);
+    const [dateRangeError, setDateRangeError] = useState('');
     const isInitialMount = useRef(true);
 
     const applyFilters = debounce((pageNumber = 1) => { 
+        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+            setDateRangeError("Tanggal 'Sampai' tidak boleh lebih awal dari tanggal 'Dari'.");
+            return; 
+        } else {
+            setDateRangeError(''); 
+        }
         const currentFilters = {
             page: pageNumber, 
             search: search,
@@ -34,6 +41,13 @@ export default function TransactionList({ transactions, filters, categories }) {
         router.get(route('test2.index'), currentFilters, {
             preserveState: true, 
             replace: true, 
+            onError: (errors) => {
+                if (errors.end_date) {
+                    setDateRangeError(errors.end_date);
+                } else {
+                    console.error("Backend filter errors:", errors);
+                }
+            }
         });
     }, 300);
 
@@ -66,6 +80,7 @@ export default function TransactionList({ transactions, filters, categories }) {
         setSelectedCategory('');
         setSortBy('date_paid');
         setSortDirection('desc');
+        setDateRangeError('');
         if (viewParam) { 
             resetParams.view = viewParam;
         }
@@ -78,6 +93,22 @@ export default function TransactionList({ transactions, filters, categories }) {
 
     const hasActiveFilters = search || startDate || endDate || selectedCategory;
 
+    const handleStartDateChange = (e) => {
+        const newStartDate = e.target.value;
+        setStartDate(newStartDate);
+        if (endDate && new Date(newStartDate) > new Date(endDate)) {
+            setEndDate(newStartDate);
+        }
+    };
+
+    const handleEndDateChange = (e) => {
+        const newEndDate = e.target.value;
+        setEndDate(newEndDate);
+        if (startDate && new Date(startDate) > new Date(newEndDate)) {
+            setStartDate(newEndDate);
+        }
+    };
+
     return (
         <AuthenticatedLayout>
             <Head title="List Data Transaksi" />
@@ -85,10 +116,10 @@ export default function TransactionList({ transactions, filters, categories }) {
             <div className="bg-white p-6 rounded-lg shadow-md mx-auto max-w-7xl sm:px-6 lg:px-8">
                 <h1 className="text-xl font-bold mb-6 text-gray-800">REKAP TRANSAKSI</h1>
 
-                {/* Filter & Search Section (Sudah Anda perbaiki) */}
+                {/* Filter & Search Section  */}
                 <div className="mb-6 flex flex-col md:flex-row md:flex-wrap items-end gap-4 md:gap-4 justify-between">
 
-                    {/* Filter Inputs (Date, Category, Search) */}
+                    {/* Filter Inputs  */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full md:w-auto flex-1 md:flex-none order-2 md:order-none">
                         {/* Dari Tanggal */}
                         <div className="w-full">
@@ -98,7 +129,7 @@ export default function TransactionList({ transactions, filters, categories }) {
                                 id="start_date"
                                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={handleStartDateChange}
                             />
                         </div>
                         {/* Sampai Tanggal */}
@@ -109,7 +140,7 @@ export default function TransactionList({ transactions, filters, categories }) {
                                 id="end_date"
                                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-sm"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={handleEndDateChange}
                             />
                         </div>
                         {/* Kategori */}
